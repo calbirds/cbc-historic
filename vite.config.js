@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-	base: '/cbc-historic/',
+	base: './',
         server: { cors: false },
