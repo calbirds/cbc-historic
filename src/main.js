@@ -1,6 +1,7 @@
 import './style.css';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { mergeSpeciesAliases } from './csv_historical_results.js';
 import leafletMarker2x from 'leaflet/dist/images/marker-icon-2x.png?url';
 import leafletMarker from 'leaflet/dist/images/marker-icon.png?url';
 import leafletMarkerShadow from 'leaflet/dist/images/marker-shadow.png?url';
@@ -87,9 +88,10 @@ const CBC_PORTAL_URL = 'https://netapp.audubon.org/aap/application/cbc';
 const CBC_126_CIRCLES_QUERY_URL =
   'https://services1.arcgis.com/lDFzr3JyGEn5Eymu/arcgis/rest/services/CBC_126/FeatureServer/0/query';
 const MAX_CSV_BYTES = 10 * 1024 * 1024;
-const CURRENT_MAX_COUNT_INDEX = 125;
+const CURRENT_MAX_COUNT_INDEX = 126;
 
 const SEED_CODES = ['CAPC', 'CARC', 'WAPT'];
+const SEED_VERSION = '2026-11-20.3';
 
 function normalizeWorkerBaseUrl(raw) {
   const s = cleanText(raw || '');
@@ -548,15 +550,52 @@ plotPopoutOverlayBtnEl?.addEventListener('click', (e) => {
   openPopout('plot');
 });
 
+function plotSeriesForExport(active) {
+  const byYear = (rows, cols) =>
+    (rows || [])
+      .filter((r) => typeof r.Year === 'number' && Number.isFinite(r.Year))
+      .slice()
+      .sort((a, b) => a.Year - b.Year)
+      .map((r) => Object.fromEntries(['Year', ...cols].map((c) => [c, r[c]])));
+
+  if (active === 'species') {
+    const sp = state.selectedSpecies;
+    if (!sp || isSpRecord(sp)) return null;
+    const norm = stripBracketedText(sp).toLowerCase();
+    const row =
+      (state.species || []).find((r) => r.Species === sp) ||
+      (state.species || []).find((r) => stripBracketedText(r?.Species || '').toLowerCase() === norm);
+    if (!row) return null;
+    const missing = new Set(state.missingYears || []);
+    const years = (state.yearsFull || state.years || []).slice().sort((a, b) => a - b);
+    const name = stripBracketedText(row.Species);
+    return {
+      label: name,
+      columns: ['Year', 'Species', 'Count'],
+      rows: years.map((y) => ({ Year: y, Species: name, Count: missing.has(y) ? '' : parseCount(row[String(y)]) })),
+    };
+  }
+  if (active === 'weather') {
+    return { label: 'Weather', columns: ['Year', 'LowTempF', 'HighTempF'], rows: byYear(state.weather, ['LowTempF', 'HighTempF']) };
+  }
+  if (active === 'effort') {
+    return { label: 'Hours', columns: ['Year', 'NumHours'], rows: byYear(state.effort, ['NumHours']) };
+  }
+  if (active === 'participation') {
+    return { label: 'Participants', columns: ['Year', 'NumParticipants'], rows: byYear(state.participation, ['NumParticipants']) };
+  }
+  return null;
+}
+
 plotExportOverlayBtnEl?.addEventListener('click', (e) => {
   e.preventDefault();
   if (!state.species) return;
-  const cfg = getTableConfig(activeTab);
-  const csv = rowsToCsv(cfg.rows || [], cfg.columns || []);
+  const series = plotSeriesForExport(activeTab);
+  if (!series || !series.rows.length) return;
+  const csv = rowsToCsv(series.rows, series.columns);
   const ci = state.countInfo || {};
   const base = sanitizeFilenamePart(ci.CountCode || ci.CountName || 'cbc');
-  const tab = sanitizeFilenamePart(cfg.title || activeTab);
-  downloadCsv(`${base}_${tab}.csv`, csv);
+  downloadCsv(`${base}_${sanitizeFilenamePart(series.label)}.csv`, csv);
 });
 
 function renderPlotSpeciesOverlay() {
@@ -1560,36 +1599,46 @@ async function ensureSeedCountsImported() {
   }
   const haveIndex = new Set((idx || []).map((r) => r?.code).filter(Boolean));
   const next = (idx || []).slice();
+  let changed = false;
 
   for (const code of seeds) {
     const key = `${IDB_KEY_DB_PREFIX}${code}`;
+    const verKey = `${key}:seedVersion`;
     let buf = null;
+    let ver = null;
     try {
       buf = await idbGet(key);
+      ver = await idbGet(verKey);
     } catch {
     }
 
-    if (!buf) {
+    let refreshed = false;
+    if (!buf || ver !== SEED_VERSION) {
       const seedUrl = new URL(`seed/${code}.sqlite`, window.location.href).toString();
       const r = await fetch(seedUrl, { credentials: 'omit' });
       if (r.ok) {
         const ab = await r.arrayBuffer();
         await idbSet(key, ab);
+        await idbSet(verKey, SEED_VERSION);
         buf = ab;
+        refreshed = true;
       }
     }
 
-    if (buf && !haveIndex.has(code)) {
+    if (buf && (refreshed || !haveIndex.has(code))) {
       try {
         const row = await buildIndexRowFromSqliteBytes(code, buf);
-        next.push(row);
+        const i = next.findIndex((x) => x?.code === code);
+        if (i >= 0) next[i] = row;
+        else next.push(row);
         haveIndex.add(code);
+        changed = true;
       } catch {
       }
     }
   }
 
-  if (next.length !== (idx || []).length) {
+  if (changed) {
     await saveCountsIndex(next);
   }
 }
@@ -1847,7 +1896,7 @@ async function loadStateFromSqlite(code) {
     meta: readJson('meta'),
     sourceUrl: readJson('sourceUrl'),
     maxCountIndex: readJson('maxCountIndex'),
-    species: readJson('species'),
+    species: mergeSpeciesAliases(readJson('species')),
     weather: readJson('weather'),
     effort: readJson('effort'),
     participation: readJson('participation'),
@@ -2316,6 +2365,9 @@ function renderSummary() {
     ['Effort years', r.effortYears || '—'],
     ['Participation years', r.participationYears || '—'],
   ];
+  for (const m of state.meta || []) {
+    if (m?.Source) rows.push([`${m.Year} data`, `${m.Source}${m.CountDate ? `, count date ${m.CountDate}` : ''}`]);
+  }
   summaryEl.replaceChildren();
   for (const [k, v] of rows) {
     const row = document.createElement('div');

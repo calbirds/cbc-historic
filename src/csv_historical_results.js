@@ -12,7 +12,46 @@ function parseTempFString(v) {
 	const m = s.match(/-?\d+(?:\.\d+)?/);
 	if (!m) return null;
 	const n = parseFloat(m[0]);
-	return Number.isFinite(n) ? n : null;
+	if (!Number.isFinite(n)) return null;
+	if (/celsius/i.test(s)) return Math.round((n * 9 / 5 + 32) * 10) / 10;
+	return n;
+}
+
+const SPECIES_MERGES = {
+	'Oak/Juniper Titmouse (Plain Titmouse)': 'Oak Titmouse',
+};
+
+export function mergeSpeciesAliases(rows) {
+	if (!Array.isArray(rows)) return rows;
+	const out = [];
+	const byName = new Map();
+	for (const r of rows) {
+		if (!byName.has(r?.Species)) byName.set(r.Species, r);
+	}
+	const merged = new Map();
+	for (const r of rows) {
+		const target = SPECIES_MERGES[r?.Species];
+		if (!target) {
+			if (!merged.has(r.Species)) out.push(r);
+			continue;
+		}
+		let acc = merged.get(target);
+		if (!acc) {
+			acc = { ...(byName.get(target) || { Species: target }) };
+			merged.set(target, acc);
+			const idx = out.findIndex((x) => x.Species === target);
+			if (idx >= 0) out[idx] = acc;
+			else out.push(acc);
+		}
+		for (const [k, v] of Object.entries(r)) {
+			if (!/^\d{4}$/.test(k)) continue;
+			const a = typeof acc[k] === 'number' ? acc[k] : null;
+			const b = typeof v === 'number' ? v : null;
+			if (a === null && b === null) continue;
+			acc[k] = (a ?? 0) + (b ?? 0);
+		}
+	}
+	return out;
 }
 
 function parseMaybeInt(v) {
@@ -136,7 +175,7 @@ function uniqueSortedYearsFromMeta(meta) {
 }
 
 export function parseHistoricalResultsByCountCsv(text) {
-	const rows = parseCsvText(text, { maxRows: 250000, maxCols: 200 });
+	const rows = parseCsvText(String(text ?? "").replace(/^\uFEFF/, ""), { maxRows: 250000, maxCols: 200 });
 
 	const countInfo = {
 		CountName: null,
@@ -332,11 +371,11 @@ export function parseHistoricalResultsByCountCsv(text) {
 	}
 
 	return {
+		speciesTable: mergeSpeciesAliases(speciesTable),
 		countInfo,
 		meta,
 		participantsEffort,
 		weatherRaw,
-		speciesTable,
 		years,
 	};
 }

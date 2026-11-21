@@ -212,10 +212,22 @@ async function main() {
   const __dirname = path.dirname(__filename);
   const repoRoot = path.resolve(__dirname, '..');
 
+  const localCsv = new Map();
+  for (const arg of process.argv.slice(2)) {
+    const m = arg.match(/^([A-Za-z0-9]+)=(.+)$/);
+    if (m) localCsv.set(m[1].toUpperCase(), m[2]);
+  }
+
   for (const seed of SEEDS) {
-    const url = buildCsvUrl(seed);
-    process.stdout.write(`Fetching ${seed.code}... `);
-    const csvText = await fetchCsvText(url);
+    if (localCsv.size && !localCsv.has(seed.code)) continue;
+    let csvText;
+    if (localCsv.has(seed.code)) {
+      process.stdout.write(`Reading ${seed.code} from ${localCsv.get(seed.code)}... `);
+      csvText = await fs.readFile(localCsv.get(seed.code), 'utf8');
+    } else {
+      process.stdout.write(`Fetching ${seed.code}... `);
+      csvText = await fetchCsvText(buildCsvUrl(seed));
+    }
     process.stdout.write('parsing... ');
     const state = await buildStateFromCsvText(csvText);
     process.stdout.write('writing sqlite... ');
