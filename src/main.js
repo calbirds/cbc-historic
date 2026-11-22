@@ -799,10 +799,10 @@ function ensureLeafletMap() {
     attributionControl: true,
   }).setView([37.5, -120.5], 6);
 
-  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 22,
     maxNativeZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
   });
 
   const esriSatellite = L.tileLayer(
@@ -810,7 +810,7 @@ function ensureLeafletMap() {
     {
       maxZoom: 22,
       maxNativeZoom: 19,
-      attribution: 'Tiles &copy; Esri',
+      attribution: 'Powered by <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">Esri</a> <span class="attr-sources">&mdash; Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community</span>',
     }
   );
 
@@ -819,7 +819,7 @@ function ensureLeafletMap() {
     {
       maxZoom: 22,
       maxNativeZoom: 19,
-      attribution: 'Tiles &copy; Esri',
+      attribution: 'Powered by <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">Esri</a> <span class="attr-sources">&mdash; Sources: Esri, HERE, Garmin, Intermap, increment P Corp., GEBCO, USGS, FAO, NPS, NRCAN, GeoBase, IGN, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), &copy; OpenStreetMap contributors, and the GIS User Community</span>',
     }
   );
 

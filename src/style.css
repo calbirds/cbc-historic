@@ -1110,3 +1110,18 @@ body:not(.is-popout) .plot [data-role="plot-empty"]::after {
   text-decoration: none;
 }
 
+
+.leaflet-container .leaflet-control-attribution .attr-sources {
+  display: inline-block;
+  max-width: 14rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.leaflet-container .leaflet-control-attribution:hover .attr-sources,
+.leaflet-container .leaflet-control-attribution:focus-within .attr-sources {
+  max-width: none;
+  white-space: normal;
+}
